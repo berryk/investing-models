@@ -1,0 +1,442 @@
+---
+title: "Vigilant Asset Allocation Tests"
+author: "Keith Berry"
+date: "January 4, 2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+# TODO 
+
+X Calculate 30 day volatility and add plots of it 
+
+Need to try with B = 2 as well and with leverage. Basic leverage and then some type of volatility based leverage
+
+Try using the DAA canary portfolio with G4 
+
+Try using longer term momentum to pick which Risk On Assets to prevent so much churn.... (3+6+12)? Or 12 months?  This looks like it might work, plot the values, so we can inspect, only switch assets when we clearly need to. 
+
+Same with Risk Off? 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(knitr)
+library(kableExtra)
+
+
+con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
+source(con)
+close(con)
+
+load.packages('quantmod')   
+```
+
+## Basic Vigilant Asset Allocation test
+
+First version is the model exactly as described on TrendExplorer this is the VAA.G4.T1.B1 model.
+
+```{r load-data, echo=FALSE}
+
+models = list()
+
+data <- readRDS("./data/raw-prices.RData")
+
+bt.prep(data, align='remove.na')
+
+prices = data$prices 
+
+ret = bt.apply.matrix(prices, ROC, type='discrete')
+abs.ret = abs(ret) * 100
+abs.ret.average = bt.apply.matrix(abs.ret, SMA, 30)
+
+plot(abs.ret.average[,spl("VOO,VEA,VWO")])
+
+period.ends = endpoints(prices, 'months')
+
+monthly.prices = prices[period.ends,]
+
+m1.ret = monthly.prices/mlag(monthly.prices,1)-1
+m3.ret = monthly.prices/mlag(monthly.prices,3)-1
+m6.ret = monthly.prices/mlag(monthly.prices,6)-1
+m12.ret = monthly.prices/mlag(monthly.prices,12)-1
+
+f13612w = ((12*m1.ret+4*m3.ret+2*m6.ret+1*m12.ret)/4)*100
+
+risky = spl("VOO,VEA,VWO,BND")
+safe = spl("SHY,IEF,LQD")
+
+top.risky = ntop(f13612w[,risky],1) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$vaa.g4.t1.b1 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t1.b1
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,24)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+
+Now with some leverage!!
+
+```{r, echo=FALSE}
+
+top.risky = ntop(f13612w[,risky],1) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+leverage = 1/abs.ret.average
+leverage = 2 
+#leverage$SHY = 1
+
+#risky.positions = top.risky * risk.on * leverage[,risky]
+risky.positions = top.risky * risk.on * 2
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+#safe.positions = top.safe * risk.off * leverage[,safe]
+safe.positions = top.safe * risk.off * 2
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$vaa.g4.t1.b1.l1 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t1.b1.l1
+currentModel$equity=currentModel$equity["1997-04-30/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+kable(tail(f13612w,13)) %>% kable_styling()
+kable(list2matrix(tail(currentModel$trade.summary$trades,13))) %>% kable_styling()
+kable(list2matrix(model.detail)) %>% kable_styling()
+# Need to align the pricing columns
+```
+
+Now try the VAA G4 T2 B1 model 
+
+```{r, echo=FALSE}
+
+top.risky = ntop(f13612w[,risky],2) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$vaa.g4.t2.b1 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t2.b1
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+Now try the VAA G4 T3 B1 model 
+
+```{r, echo=FALSE}
+
+top.risky = ntop(f13612w[,risky],3) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$vaa.g4.t3.b1 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t3.b1
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+
+Now try with 6 month top asset VAA G4 T1 B1 model 
+
+```{r, echo=FALSE}
+
+top.risky = ntop(m6.ret[,risky],1) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(m6.ret[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$vaa.g4.t1.b1.m6 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t1.b1.m6
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,13)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+
+Now try the DAA canary universe 
+
+```{r, echo=FALSE}
+
+canary = spl("VWO,BND")
+
+top.risky = ntop(f13612w[,risky],1) 
+risk.on = rowSums(f13612w[,canary] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,canary] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$daa.g4.t1.b1 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$daa.g4.t1.b1
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,24)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+
+Now try with just a two asset safe portfolio
+
+```{r, echo=FALSE}
+
+canary = spl("VWO,BND")
+safe = spl("SHY,IEF")
+
+top.risky = ntop(f13612w[,risky],1) 
+risk.on = rowSums(f13612w[,canary] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,canary] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+positions$LQD = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$daa.g4.t1.b1.c2 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$daa.g4.t1.b1.c2
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,24)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+...and using T3 like in the paper
+
+```{r, echo=FALSE}
+
+canary = spl("VWO,BND")
+safe = spl("SHY,IEF")
+
+top.risky = ntop(f13612w[,risky],3) 
+risk.on = rowSums(f13612w[,canary] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,canary] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+positions$LQD = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$daa.g4.t3.b1.c2 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$daa.g4.t3.b1.c2
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+#kable(tail(currentModel$trade.summary$trades,24)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+
+Try adding TLT back in lets use the T2 B1 
+
+```{r, echo=FALSE}
+
+safe = spl("SHY,IEF,TLT")
+top.risky = ntop(f13612w[,risky],2) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+risky.positions = top.risky * risk.on
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+safe.positions = top.safe * risk.off
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices
+data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$LQD = 0
+
+data$weight = positions[,colnames(data$weight)]
+
+models$vaa.g4.t2.b1.tlt = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t2.b1.tlt
+#currentModel$equity=currentModel$equity["2000-08-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+```
+
+```{r, echo=FALSE}
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+# Need to align the pricing columns
+```
+
+# Compare all portfolios
+
+```{r, echo=FALSE}
+
+kable(plotbt.strategy.sidebyside(models, make.plot=F, return.table=T)) %>% kable_styling()
+      
+```

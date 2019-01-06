@@ -1,0 +1,263 @@
+---
+title: "DualMomentum"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+install.packages("googlesheets")
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+
+library(knitr)
+library(kableExtra)
+```
+
+```{r, echo=FALSE, results="hide"}
+
+con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
+source(con)
+close(con)
+
+load.packages('quantmod')   
+
+tickers = spl('
+              TLT = TLT + VUSTX,
+              BLV = BLV + VBLTX,
+              GLD = GLD + GOLD,
+              SPY = SPY + VFINX,
+              SHY = VFISX,
+              VEU = VEU + FDIVX,
+              ')
+
+ tickers1 = spl('
+               TLT,
+               VUSTX,
+               BLV,
+               VBLTX,
+               GLD,
+               SPY,
+               VFINX,
+               SHY,
+               VFISX,
+               VEU,
+               FDIVX,
+               ')
+ 
+ # Use external data
+raw <- new.env()
+
+
+getSymbols.extra(tickers1, src='yahoo', from = '1970-01-01', env = raw, set.symbolnames = T, auto.assign = T)
+for(i in raw$symbolnames) raw[[i]] = adjustOHLC(raw[[i]], use.Adjusted = TRUE, symbol.name=i)
+raw$GOLD = bundes.bank.data.gold()
+
+data <- new.env()
+
+getSymbols.extra(tickers, src = 'yahoo', from = '1970-01-01', env = data, set.symbolnames = T,raw.data = raw, auto.assign = T)
+
+bt.prep(data, align='remove.na')
+```
+
+```{r, echo=FALSE, results="hide"}
+prices = data$prices  
+#period.ends = endpoints(prices, 'quarters')
+period.ends = endpoints(prices, 'months')
+#period.ends = endpoints(prices, 'days')
+period.ends = period.ends[period.ends > 0]		
+period.ends = c(1, period.ends)
+```
+
+```{r, echo=FALSE, results="hide"}
+library(knitr)
+models = list()
+```
+
+
+# SPY Buy and Hold
+
+```{r, echo=FALSE, results="hide"}
+data$weight[] = NA
+data$weight$SHY=0
+data$weight$SPY=1
+data$weight$TLT=0
+data$weight$GLD=0
+data$weight$BLV=0
+
+models$spy.bh = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+model.detail = list()
+
+currentModel = models$spy.bh
+
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,252,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,30)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+```
+
+# Perm Portfolio
+
+```{r, echo=FALSE, results="hide"}
+data$weight[] = NA
+data$weight$SHY=0
+data$weight$SPY=1/3
+data$weight$TLT=1/3
+data$weight$GLD=1/3
+
+models$perm = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+model.detail = list()
+
+currentModel = models$perm
+
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,252,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,30)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+```
+
+# Dual Momentum
+
+
+
+```{r, echo=FALSE, results="hide"}
+data$weight[] = NA
+
+days = 252
+annual.ret = prices/mlag(prices,days )
+absmom = annual.ret - c(coredata(annual.ret$SHY))
+
+assets = spl("SPY,VEU,TLT,GLD,SHY")
+assets = spl("SPY,VEU,SHY")
+top.assets = ntop(absmom[,assets],1) 
+
+portfolio.weight = absmom * 0 
+portfolio.weight[,assets]=top.assets
+
+data$weight[] = NA
+data$weight[period.ends,] = portfolio.weight[period.ends,]
+models$dual = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+model.detail = list()
+
+currentModel = models$dual
+
+currentModel$equity=currentModel$equity["1995-11-30/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,252,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,30)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+```
+
+# Dual Momentum Two Periods
+
+
+
+```{r, echo=FALSE, results="hide"}
+data$weight[] = NA
+
+days = 252
+annual.ret = prices/mlag(prices,days )
+absmom = annual.ret - c(coredata(annual.ret$SHY))
+
+days = 126
+annual.ret.126 = prices/mlag(prices,days )
+absmom.126 = annual.ret.126 - c(coredata(annual.ret.126$SHY))
+
+assets = spl("SPY,VEU,TLT,GLD,SHY")
+assets = spl("SPY,VEU,SHY")
+top.assets = ntop(annual.ret[,assets],1) 
+top.assets.126 = ntop(annual.ret.126[,assets],1) 
+
+portfolio.weight = absmom * 0 
+portfolio.weight[,assets]=top.assets+top.assets.126
+
+data$weight[] = NA
+data$weight[period.ends,] = portfolio.weight[period.ends,]
+models$dual = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+model.detail = list()
+
+currentModel = models$dual
+
+currentModel$equity=currentModel$equity["1995-11-30/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,252,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,30)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+```
+
+# Dual momentum 3 periods
+
+```{r, echo=FALSE, results="hide"}
+data$weight[] = NA
+
+ret = bt.apply.matrix(prices, ROC, type='discrete')
+abs.ret = abs(ret)
+abs.ret.average = bt.apply.matrix(abs.ret, SMA, 30)
+leverage = 0.005/abs.ret.average
+leverage$SHY = 1
+
+days = 252
+annual.ret = (prices/mlag(prices,days))
+absmom = annual.ret - c(coredata(annual.ret$SHY))
+
+days = 126
+annual.ret.126 = (prices/mlag(prices,days))
+absmom.126 = annual.ret.126 - c(coredata(annual.ret.126$SHY))
+
+days = 63
+annual.ret.63 = (prices/mlag(prices,days))
+absmom.63 = annual.ret.63 - c(coredata(annual.ret.63$SHY))
+
+
+
+assets = spl("SPY,VEU,TLT,GLD,SHY")
+assets = spl("SPY,VEU,SHY")
+top.assets = ntop(absmom[,assets],1) 
+top.assets.126 = ntop(absmom.126[,assets],1) 
+top.assets.63 = ntop(absmom.63[,assets],1) 
+
+current.leverage = leverage[,assets]
+
+portfolio.weight = absmom * 0 
+portfolio.weight[,assets]=(top.assets+top.assets.126+top.assets.63)*(current.leverage/3)
+
+data$weight[] = NA
+data$weight[period.ends,] = portfolio.weight[period.ends,]
+models$dual = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+model.detail = list()
+
+currentModel = models$dual
+
+currentModel$equity=currentModel$equity["1995-11-30/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,252,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+kable(tail(currentModel$trade.summary$trades,30)) %>% kable_styling()
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+```
+
+GLD and TLT are giving really bad drawdowns, much worse than just SHY. With GLD and TLT, get a Sharp of 0.88, DD of -58.87, Worst Month -39.2
+
+Without GLD and TLT, we get CAGR 40, DD of -44.86, Worst Month -26.8
+
