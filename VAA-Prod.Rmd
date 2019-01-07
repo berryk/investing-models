@@ -1,0 +1,102 @@
+---
+title: "Prod - Levered Vigilant Asset Allocation"
+author: "Keith Berry"
+date: "January 7, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(knitr)
+library(kableExtra)
+
+
+con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
+source(con)
+close(con)
+
+load.packages('quantmod')   
+```
+
+```{r load-data, echo=FALSE}
+
+models = list()
+
+data <- readRDS("./data/raw-prices.RData")
+
+bt.prep(data, align='remove.na')
+
+prices = data$prices 
+
+ret = bt.apply.matrix(prices, ROC, type='discrete')
+abs.ret = abs(ret) * 100
+abs.ret.average = bt.apply.matrix(abs.ret, SMA, 30)
+
+plot(abs.ret.average[,spl("VOO,VEA,VWO")])
+
+period.ends = endpoints(prices, 'months')
+period.ends = period.ends[period.ends > 0]		
+period.ends = c(1, period.ends)
+
+monthly.prices = prices[period.ends,]
+
+m1.ret = monthly.prices/mlag(monthly.prices,1)-1
+m3.ret = monthly.prices/mlag(monthly.prices,3)-1
+m6.ret = monthly.prices/mlag(monthly.prices,6)-1
+m12.ret = monthly.prices/mlag(monthly.prices,12)-1
+
+f13612w = ((12*m1.ret+4*m3.ret+2*m6.ret+1*m12.ret)/4)*100
+
+m1.ret.daily = prices/mlag(prices,21)-1
+m3.ret.daily = prices/mlag(prices,63)-1
+m6.ret.daily = prices/mlag(prices,126)-1
+m12.ret.daily = prices/mlag(prices,252)-1
+
+f13612w.daily = ((12*m1.ret.daily+4*m3.ret.daily+2*m6.ret.daily+1*m12.ret.daily)/4)*100
+
+risky = spl("VOO,VEA,VWO,BND")
+safe = spl("SHY,IEF,LQD")
+
+top.risky = ntop(f13612w[,risky],1) 
+risk.on = rowSums(f13612w[,risky] < 0)==0
+
+#leverage = 1/abs.ret.average
+#leverage = 2 
+#leverage$SHY = 1
+
+#risky.positions = top.risky * risk.on * leverage[,risky]
+risky.positions = top.risky * risk.on * 2
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,risky] < 0)>0
+
+#safe.positions = top.safe * risk.off * leverage[,safe]
+safe.positions = top.safe * risk.off * 2
+
+data$prices = data$prices[period.ends,]
+data$weight = data$prices
+#data$weight[] = 0
+
+positions = cbind(risky.positions,safe.positions)
+positions$TLT = 0
+
+data$weight[] = NA
+data$weight= positions[,colnames(data$weight)]
+models$vaa.g4.t1.b1.l1 = bt.run.share(data, trade.summary=T, clean.signal=F)
+
+currentModel = models$vaa.g4.t1.b1.l1
+currentModel$equity=currentModel$equity["1997-04-30/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+kable(tail(f13612w,13)) %>% kable_styling()
+kable(list2matrix(tail(currentModel$trade.summary$trades,13))) %>% kable_styling()
+kable(list2matrix(model.detail)) %>% kable_styling()
+# Need to align the pricing columns
+```
