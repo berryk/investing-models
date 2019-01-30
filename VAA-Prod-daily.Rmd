@@ -109,3 +109,10 @@ kable(list2matrix(tail(currentModel$trade.summary$trades,13))) %>% kable_styling
 kable(list2matrix(model.detail)) %>% kable_styling()
 # Need to align the pricing columns
 ```
+# Last trades
+
+```{r, echo=FALSE}
+
+kable(list2matrix(tail(positions[period.ends,],12))) %>% kable_styling()
+
+```
