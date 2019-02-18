@@ -1,8 +1,4 @@
-con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
-source(con)
-close(con)
-
-load.packages('quantmod')   
+setwd("~/investing-models")
 
 con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
 source(con)

@@ -1,0 +1,103 @@
+---
+title: Golden Butterfly with some timing and international"
+author: "Keith Berry"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(knitr)
+library(kableExtra)
+
+
+con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
+source(con)
+close(con)
+
+load.packages('quantmod')   
+```
+
+
+```{r load-data, echo=FALSE}
+
+models = list()
+
+data <- readRDS("./data/raw-prices-goldenkb.RData")
+
+bt.prep(data, align='remove.na')
+
+prices = data$prices 
+
+period.ends = endpoints(prices, 'months')
+#period.ends = endpoints(prices, 'days')
+period.ends = period.ends[period.ends > 0]		
+period.ends = c(1, period.ends)
+
+sma50 = bt.apply.matrix(prices, SMA, 50 )
+sma200 = bt.apply.matrix(prices, SMA, 200) 
+
+sma50200 = sma50/sma200 - 1 
+
+annual.ret = prices/mlag(prices,252)-1
+
+# Which has the higher return, VTI or VEA
+
+eq1 = ntop(annual.ret[,spl("VTI,VEA")],1)
+eq1$VWO = 0
+eq2 = ntop(annual.ret[,spl("VTI,VWO")],1)
+eq2$VEA = 0
+
+positions = (eq2[,spl("VTI,VEA,VWO")]+eq1[,spl("VTI,VEA,VWO")])
+positions$TLT = 1
+positions$GLD = 1
+
+position.size = (((annual.ret > 0)*0.5)+ ((sma50200 >0) * 0.5))
+
+cols = spl("VTI,VEA,VWO,GLD,TLT")
+total.position = positions[,cols]*position.size[,cols]
+
+total.position$IEF = 4 - rowSums(total.position[,cols])
+total.position = total.position / 4
+total.position$SHY = 0
+
+data$weight = prices
+data$weight[] = NA
+data$weight[period.ends,]= total.position[period.ends,colnames(data$weight)]
+models$goldenkb = bt.run(data, type='weight', trade.summary=T)
+
+currentModel = models$goldenkb
+currentModel$equity=currentModel$equity["1997-05-31/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+```
+
+# Annual Returns
+
+```{r, echo=FALSE}
+kable(list2matrix(tail(annual.ret[period.ends],13))) %>% kable_styling()
+```
+
+# SMA 50/200
+
+```{r, echo=FALSE}
+kable(list2matrix(tail(sma50200[period.ends],13))) %>% kable_styling()
+```
+
+```{r, echo=FALSE}
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+kable(list2matrix(tail(currentModel$trade.summary$trades,13))) %>% kable_styling()
+kable(list2matrix(model.detail)) %>% kable_styling()
+# Need to align the pricing columns
+```
+# Last trades
+
+```{r, echo=FALSE}
+
+kable(list2matrix(tail(total.position[period.ends,],12))) %>% kable_styling()
+
+```
