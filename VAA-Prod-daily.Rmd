@@ -58,7 +58,7 @@ m12.ret.daily = prices/mlag(prices,252)-1
 f13612w.daily = ((12*m1.ret.daily+4*m3.ret.daily+2*m6.ret.daily+1*m12.ret.daily)/4)*100
 
 risky = spl("VOO,VEA,VWO")
-safe = spl("IEF,SHY,LQD")
+safe = spl("IEF")
 canary = spl("VOO,VEA,VWO,BND")
 
 top.risky = ntop(f13612w[,risky],1) 
@@ -67,6 +67,7 @@ risk.on = rowSums(f13612w[,canary] < 0)==0
 leverage = 1/abs.ret.average
 leverage[] <- apply(leverage, 2,function(x) ifelse(x > 3, 3, x))
 leverage[] <- apply(leverage, 2, function(x) round(x/0.5)*0.5)
+#leverage$IEF = 1
 #leverage = 2 
 #leverage$SHY = 1
 

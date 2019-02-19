@@ -259,7 +259,7 @@ kable(list2matrix(model.detail)) %>% kable_styling()
 ```{r, echo=FALSE}
 
 risky = spl("VOO,VEA,VWO")
-safe = spl("IEF,SHY,LQD")
+safe = spl("IEF")
 canary = spl("VOO,VEA,VWO,BND")
 
 top.risky = ntop(f13612w[,risky],1) 
@@ -296,6 +296,63 @@ data$weight[period.ends,]= positions[period.ends,colnames(data$weight)]
 models$vaa.g4.t1.b1.lv3.c.s = bt.run(data, type='weight', trade.summary=T)
 
 currentModel = models$vaa.g4.t1.b1.lv3.c.s
+currentModel$equity=currentModel$equity["1997-04-30/"]
+model.detail = bt.detail.summary(currentModel)
+twelve.ret = ROC(currentModel$equity,12,type="discrete")
+model.detail$System$Roll.TwelveM = (sum(twelve.ret > 0,na.rm=TRUE)/(sum(twelve.ret > 0,na.rm=TRUE)+sum(twelve.ret < 0,na.rm=TRUE)))*100
+
+kable(list2matrix(model.detail)) %>% kable_styling()
+plotbt.monthly.table(currentModel$equity)
+plot(currentModel$equity)
+plot(compute.drawdown(currentModel$equity)*100)
+kable(tail(f13612w,13)) %>% kable_styling()
+kable(list2matrix(tail(currentModel$trade.summary$trades,13))) %>% kable_styling()
+kable(list2matrix(model.detail)) %>% kable_styling()
+# Need to align the pricing columns
+```
+# Latest version with leverage rounding and top 2 and just IEF
+
+```{r, echo=FALSE}
+
+risky = spl("VOO,VEA,VWO")
+safe = spl("IEF,SHY,LQD")
+canary = spl("VOO,VEA,VWO,BND")
+
+top.risky = ntop(f13612w[,risky],2)
+top.risky = top.risky * 0.5
+risk.on = rowSums(f13612w[,canary] < 0)==0
+
+leverage = 1/abs.ret.average
+leverage[] <- apply(leverage, 2,function(x) ifelse(x > 3, 3, x))
+leverage[] <- apply(leverage, 2, function(x) round(x/0.5)*0.5)
+#leverage = 2 
+#leverage$SHY = 1
+
+risky.positions = top.risky * risk.on * leverage[,risky]
+#risky.positions = top.risky * risk.on * 2
+
+top.safe = ntop(f13612w[,safe],1)
+risk.off = rowSums(f13612w[,canary] < 0)>0
+
+safe.positions = top.safe * risk.off * leverage[,safe]
+#safe.positions = top.safe * risk.off * 2
+
+#data$prices = data$prices[period.ends,]
+data$weight = data$prices[period.ends,]
+#data$weight[] = 0
+
+positions = data$prices
+positions[] = 0
+temp.positions = cbind(risky.positions,safe.positions)
+positions[period.ends,colnames(temp.positions)] = temp.positions
+#positions$TLT = 0
+
+data$weight = prices
+data$weight[] = NA
+data$weight[period.ends,]= positions[period.ends,colnames(data$weight)]
+models$vaa.g4.t2.b1.lv3.c.s = bt.run(data, type='weight', trade.summary=T)
+
+currentModel = models$vaa.g4.t2.b1.lv3.c.s
 currentModel$equity=currentModel$equity["1997-04-30/"]
 model.detail = bt.detail.summary(currentModel)
 twelve.ret = ROC(currentModel$equity,12,type="discrete")
