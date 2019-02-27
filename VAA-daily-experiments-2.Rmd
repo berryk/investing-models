@@ -35,6 +35,11 @@ ret = bt.apply.matrix(prices, ROC, type='discrete')
 abs.ret = abs(ret) * 100
 abs.ret.average = bt.apply.matrix(abs.ret, SMA, 30)
 
+abs.ret.m1 = bt.apply.matrix(abs.ret, SMA, 21)
+abs.ret.m3 = bt.apply.matrix(abs.ret, SMA, 63)
+abs.ret.m6 = bt.apply.matrix(abs.ret, SMA, 126)
+abs.ret.m12 = bt.apply.matrix(abs.ret, SMA, 252)
+
 plot(abs.ret.average[,spl("VOO,VEA,VWO")])
 
 period.ends = endpoints(prices, 'months')
@@ -55,14 +60,26 @@ m3.ret.daily = prices/mlag(prices,63)-1
 m6.ret.daily = prices/mlag(prices,126)-1
 m12.ret.daily = prices/mlag(prices,252)-1
 
+s1.daily = m1.ret.daily / abs.ret.m1
+s3.daily = m3.ret.daily / abs.ret.m3
+s6.daily = m6.ret.daily / abs.ret.m6
+s12.daily = m12.ret.daily / abs.ret.m12
+
+s1.monthly = s1.daily[period.ends,]
+s3.monthly = s3.daily[period.ends,]
+s6.monthly = s6.daily[period.ends,]
+s12.monthly = s12.daily[period.ends,]
+
 f13612w.daily = ((12*m1.ret.daily+4*m3.ret.daily+2*m6.ret.daily+1*m12.ret.daily)/4)*100
+
+s13612w = ((12*s1.monthly+4*s3.monthly+2*s6.monthly+1*s12.monthly)/4)*100
 
 risky = spl("VOO,VEA,VWO")
 safe = spl("IEF,SHY")
 canary = spl("VOO,VEA,VWO,BND")
 
-top.risky = ntop(f13612w[,risky],1) 
-risk.on = rowSums(f13612w[,canary] < 0)==0
+top.risky = ntop(s13612w[,risky],1) 
+risk.on = rowSums(s13612w[,canary] < 0)==0
 
 leverage = 1/abs.ret.average
 leverage[] <- apply(leverage, 2,function(x) ifelse(x > 3, 3, x))
@@ -74,8 +91,8 @@ leverage[] <- apply(leverage, 2, function(x) round(x/0.5)*0.5)
 risky.positions = top.risky * risk.on * leverage[,risky]
 #risky.positions = top.risky * risk.on * 2
 
-top.safe = ntop(f13612w[,safe],1)
-risk.off = rowSums(f13612w[,canary] < 0)>0
+top.safe = ntop(s13612w[,safe],1)
+risk.off = rowSums(s13612w[,canary] < 0)>0
 
 safe.positions = top.safe * risk.off * leverage[,safe]
 #safe.positions = top.safe * risk.off * 2
