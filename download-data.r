@@ -1,4 +1,4 @@
-setwd("~/investing-models")
+setwd("~/dropbox/investing-models")
 
 con = gzcon(url('https://github.com/systematicinvestor/SIT/raw/master/sit.gz', 'rb'))
 source(con)
