@@ -69,9 +69,19 @@ IEF = IEF + VFITX, #7 to 10 Year Treasury - Nov 91
 # LONG.TR = [TLT] + VUSTX
 # '
 
-raw <- new.env()
+data <- new.env()
 
-getSymbols.extra(tickers, src='yahoo', from = '1970-01-01', env = raw, set.symbolnames = T, auto.assign = T)
-for(i in raw$symbolnames) raw[[i]] = adjustOHLC(raw[[i]], use.Adjusted = TRUE, symbol.name=i)
+getSymbols.extra(tickers, src='yahoo', from = '1970-01-01', env = data, 
+                 set.symbolnames = T, auto.assign = T)
+for(i in data$symbolnames) data[[i]] = adjustOHLC(data[[i]], use.Adjusted = TRUE, symbol.name=i)
 
-saveRDS(raw, file="./data/raw-prices.RData")
+# current quotes logic
+quotes = getQuote(data$symbolnames)
+
+for(i in data$symbolnames)
+  if( last(index(data[[i]])) < as.Date(quotes[i, 'Trade Time']) ) {
+    data[[i]] = rbind( data[[i]], make.xts(quotes[i, spl('Open,High,Low,Last,Volume,Last')],
+                                           as.Date(quotes[i, 'Trade Time'])))
+  }
+
+saveRDS(data, file="./data/raw-prices.RData")
